@@ -210,6 +210,13 @@ function App() {
     });
   };
 
+  const handleClearHistory = () => {
+    if (window.confirm('すべての変換履歴（プリセット）をクリアしてもよろしいですか？')) {
+      setHistory([]);
+      localStorage.removeItem('scoreext_history');
+    }
+  };
+
   const handleMouseDown = (e) => {
     const rect = previewRef.current.getBoundingClientRect();
     const x = e.clientX - rect.left;
@@ -412,7 +419,25 @@ function App() {
         {history.length > 0 && !previewUrl && !taskId && (
           <div className="history-section">
             <h2 className="history-title">
-              <Clock size={20} /> 最近の変換履歴（プリセット）
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <Clock size={20} /> 最近の変換履歴（プリセット）
+              </div>
+              <button 
+                onClick={handleClearHistory}
+                className="delete-btn"
+                style={{ 
+                  fontSize: '0.85rem', 
+                  padding: '6px 12px', 
+                   display: 'flex', 
+                  alignItems: 'center', 
+                  gap: '4px',
+                  borderRadius: '8px',
+                  background: 'rgba(244, 63, 94, 0.1)'
+                }}
+                title="すべての履歴を削除"
+              >
+                <Trash size={14} /> 一括クリア
+              </button>
             </h2>
             <div className="history-grid">
               {history.map((item) => (

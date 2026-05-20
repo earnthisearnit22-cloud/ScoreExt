@@ -369,6 +369,7 @@ input:focus {
   margin-bottom: 20px;
   display: flex;
   align-items: center;
+  justify-content: space-between;
   gap: 8px;
   color: #818cf8;
 }

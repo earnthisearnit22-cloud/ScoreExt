@@ -18,6 +18,7 @@ frontend/frontend.log
 backend/test.pdf
 backend/test_dl.mp4
 backend/test_title.png
+backend/temp/
 
 # Environment variables
 .env
