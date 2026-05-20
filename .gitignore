@@ -1,0 +1,29 @@
+# Node.js
+node_modules/
+node-portable/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Build outputs
+dist/
+build/
+
+# Logs
+*.log
+backend/backend.log
+frontend/frontend.log
+
+# Temporary and test files in backend
+backend/test.pdf
+backend/test_dl.mp4
+backend/test_title.png
+
+# Environment variables
+.env
+.env.local
+.env.*.local
+
+# OS files
+.DS_Store
+Thumbs.db

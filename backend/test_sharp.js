@@ -1,0 +1,1 @@
+const sharp = require('sharp'); const svg = '<svg width="500" height="40"><text x="250" y="30" font-family="sans-serif" font-size="24" text-anchor="middle" fill="black">テストタイトル</text></svg>'; sharp(Buffer.from(svg)).png().toFile('test_title.png');
