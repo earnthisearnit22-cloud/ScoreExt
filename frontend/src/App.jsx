@@ -311,7 +311,7 @@ function App() {
   return (
     <div className="container">
       <div className="card">
-        <h1>ScoreExt <span>ROI</span></h1>
+        <h1>ScoreExt <span>楽譜抽出アシスタント</span></h1>
         <p className="subtitle">動画の範囲を選択して、そこだけを楽譜として抽出します</p>
 
         {!previewUrl && !taskId && (
@@ -554,7 +554,7 @@ function App() {
         )}
       </div>
       <footer style={{ marginTop: '48px', textAlign: 'center', color: 'var(--text-gray)', fontSize: '0.9rem' }}>
-        <p>© 2026 ScoreExt AI Engine. All rights reserved.</p>
+        <p>© 2026 ScoreExt 楽譜自動抽出ツール. All rights reserved.</p>
       </footer>
     </div>
   );
