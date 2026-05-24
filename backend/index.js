@@ -4,6 +4,17 @@ const { spawn } = require('child_process');
 const ffmpegPath = require('@ffmpeg-installer/ffmpeg').path;
 const ffmpeg = require('fluent-ffmpeg');
 const sharp = require('sharp');
+sharp.cache(false); // 複数フレームの連続処理時のメモリリークとクラッシュを防止
+
+process.on('uncaughtException', (err) => {
+    fs.writeFileSync('crash.log', 'Uncaught Exception: ' + err.stack + '\n', { flag: 'a' });
+    process.exit(1);
+});
+process.on('unhandledRejection', (reason, promise) => {
+    fs.writeFileSync('crash.log', 'Unhandled Rejection at: ' + promise + ' reason: ' + reason + '\n', { flag: 'a' });
+    process.exit(1);
+});
+
 const PDFDocument = require('pdfkit');
 const fs = require('fs');
 const path = require('path');
@@ -193,16 +204,20 @@ async function processVideo(videoUrl, taskId, crop, title, outputPath, options =
             const metadata = await sharpImg.metadata();
 
             try {
-                const left = Math.floor(crop.x * metadata.width);
-                const top = Math.floor(crop.y * metadata.height);
-                const width = Math.floor(crop.width * metadata.width);
-                const height = Math.floor(crop.height * metadata.height);
+                const rawLeft = Math.floor(crop.x * metadata.width);
+                const rawTop = Math.floor(crop.y * metadata.height);
+                const left = Math.max(0, rawLeft);
+                const top = Math.max(0, rawTop);
+                
+                // 元の幅・高さから、クリップされた座標分を差し引く（右下の座標が変わらないようにする）
+                const rawWidth = Math.floor(crop.width * metadata.width) - (left - rawLeft);
+                const rawHeight = Math.floor(crop.height * metadata.height) - (top - rawTop);
 
                 const extractData = {
                     left: left,
                     top: top,
-                    width: Math.min(width, metadata.width - left),
-                    height: Math.max(2, Math.min(height, metadata.height - top))
+                    width: Math.max(1, Math.min(rawWidth, metadata.width - left)),
+                    height: Math.max(1, Math.min(rawHeight, metadata.height - top))
                 };
                 
                 await sharpImg
@@ -214,22 +229,26 @@ async function processVideo(videoUrl, taskId, crop, title, outputPath, options =
                     .jpeg({ quality: 85 })
                     .toFile(processedPath);
 
-                const currentBuffer = await sharp(processedPath).resize(50, 50, { fit: 'fill' }).toBuffer();
+                const currentBuffer = await sharp(processedPath)
+                    .resize(50, 50, { fit: 'fill' })
+                    .grayscale()
+                    .raw()
+                    .toBuffer();
                 
                 if (!lastSavedBuffer) {
                     // 最初のフレームは無条件で保存確定
                     capturedImages.push(processedPath);
                     lastSavedBuffer = currentBuffer;
                 } else {
-                    // 1. 直前フレームとの差分を計算（瞬間的な動き / 速度）
-                    const stepDiff = await sharp(currentBuffer).composite([{ input: lastBuffer, blend: 'difference' }]).toBuffer();
-                    const stepStats = await sharp(stepDiff).stats();
-                    const stepMean = stepStats.channels[0].mean;
-
-                    // 2. 最後に保存確定したフレームとの差分を計算（累計変化量）
-                    const accDiff = await sharp(currentBuffer).composite([{ input: lastSavedBuffer, blend: 'difference' }]).toBuffer();
-                    const accStats = await sharp(accDiff).stats();
-                    const accMean = accStats.channels[0].mean;
+                    // ピクセルごとの差分を純粋なJSで計算（Sharpのcompositeによるメモリリークやクラッシュを完全に防ぐ）
+                    let stepDiffSum = 0;
+                    let accDiffSum = 0;
+                    for (let i = 0; i < currentBuffer.length; i++) {
+                        stepDiffSum += Math.abs(currentBuffer[i] - lastBuffer[i]);
+                        accDiffSum += Math.abs(currentBuffer[i] - lastSavedBuffer[i]);
+                    }
+                    const stepMean = stepDiffSum / currentBuffer.length;
+                    const accMean = accDiffSum / currentBuffer.length;
 
                     // 判定基準: 
                     // ・直前フレームからの動きが小さい（＝静止・安定している、閾値 4.5）
@@ -254,6 +273,11 @@ async function processVideo(videoUrl, taskId, crop, title, outputPath, options =
             
             tasks[taskId].progress = 20 + Math.floor((idx / frameFiles.length) * 60);
             tasks[taskId].detail = `譜面の重複判定と動きの解析中... (解析済: ${idx + 1} / ${frameFiles.length} フレーム)`;
+
+            // 定期的にイベントループを解放してメモリ解放(GC)とステータスAPIの応答を促す
+            if (idx % 10 === 0) {
+                await new Promise(r => setTimeout(r, 0));
+            }
         }
 
         if (capturedImages.length === 0) throw new Error('No frames captured.');
@@ -336,18 +360,11 @@ async function processVideo(videoUrl, taskId, crop, title, outputPath, options =
         }
         doc.end();
 
-        await new Promise((resolve) => pdfStream.on('finish', resolve));
+        await new Promise((resolve, reject) => {
+            pdfStream.on('finish', resolve);
+            pdfStream.on('error', reject);
+        });
         
-        // Cleanup: video and frames are no longer needed after PDF is done
-        try {
-            if (fs.existsSync(videoPath)) fs.unlinkSync(videoPath);
-            if (fs.existsSync(framesDir)) fs.rmSync(framesDir, { recursive: true, force: true });
-            if (fs.existsSync(processedDir)) fs.rmSync(processedDir, { recursive: true, force: true });
-            console.log(`Cleanup completed for task: ${taskId}`);
-        } catch (e) {
-            console.warn('Cleanup failed', e.message);
-        }
-
         if (outputPath && fs.existsSync(outputPath)) {
             try {
                 const safeTitle = title.replace(/[<>:"/\\|?*]/g, '_') + '.pdf';
@@ -399,7 +416,14 @@ app.get('/preview-image/:previewId', (req, res) => {
 app.post('/convert', (req, res) => {
     const { url, crop, title, outputPath, startTime, endTime, rowsPerPage } = req.body;
     const taskId = uuidv4();
-    processVideo(url, taskId, crop, title, outputPath, { startTime, endTime, rowsPerPage });
+    processVideo(url, taskId, crop, title, outputPath, { startTime, endTime, rowsPerPage })
+        .catch(err => {
+            console.error('Unhandled error in processVideo:', err);
+            if (tasks[taskId]) {
+                tasks[taskId].status = 'error';
+                tasks[taskId].message = '予期せぬエラーが発生しました: ' + err.message;
+            }
+        });
     res.json({ task_id: taskId });
 });
 

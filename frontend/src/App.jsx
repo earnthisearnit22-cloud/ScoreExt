@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import axios from 'axios';
-import { Video, Download, FileText, Loader, CheckCircle, AlertCircle, Play, Crop, RefreshCw, Folder, Clock, Settings, Layers, Trash } from 'lucide-react';
+import { Video, Download, FileText, Loader, CheckCircle, AlertCircle, Play, Crop, RefreshCw, Folder, Clock, Settings, Layers, Trash, Eye } from 'lucide-react';
 
 const API_BASE = window.location.port === '5173' ? 'http://localhost:8000' : window.location.origin;
 
@@ -68,6 +68,9 @@ function App() {
   const [rowsPerPage, setRowsPerPage] = useState(10);
   const [error, setError] = useState(null);
   const [activeMode, setActiveMode] = useState('crop'); // 'video' or 'crop'
+  const [showCropPreview, setShowCropPreview] = useState(false);
+  const [croppedImageUrl, setCroppedImageUrl] = useState(null);
+  const [isCropping, setIsCropping] = useState(false);
 
   // リサイズ・移動用ステート
   const [resizing, setResizing] = useState(false);
@@ -103,8 +106,7 @@ function App() {
             setLoading(false);
           }
         } catch {
-          console.error('Failed to get status');
-          clearInterval(interval);
+          console.error('Failed to get status, retrying...');
         }
       }, 2000);
     }
@@ -224,6 +226,57 @@ function App() {
       setError('プレビューの取得に失敗しました。URLを確認してください。');
       setLoading(false);
     }
+  };
+
+  // 選択範囲の完成予想をプレビュー
+  const handlePreviewCrop = async () => {
+    if (!roi) return;
+    setIsCropping(true);
+    let targetUrl = previewUrl;
+
+    if (!targetUrl && url) {
+      try {
+        const response = await axios.post(`${API_BASE}/preview`, { url });
+        targetUrl = `${API_BASE}${response.data.previewUrl}`;
+        setPreviewUrl(targetUrl);
+        if (!roi && response.data.detectedRoi) {
+          setRoi(response.data.detectedRoi);
+        }
+      } catch {
+        setError('プレビュー画像の取得に失敗しました。');
+        setIsCropping(false);
+        return;
+      }
+    }
+
+    if (!targetUrl) {
+      setIsCropping(false);
+      return;
+    }
+
+    const img = new Image();
+    img.crossOrigin = "Anonymous";
+    img.onload = () => {
+      const canvas = document.createElement('canvas');
+      const ctx = canvas.getContext('2d');
+      const sx = roi.x * img.width;
+      const sy = roi.y * img.height;
+      const sWidth = roi.width * img.width;
+      const sHeight = roi.height * img.height;
+      
+      canvas.width = sWidth;
+      canvas.height = sHeight;
+      ctx.drawImage(img, sx, sy, sWidth, sHeight, 0, 0, sWidth, sHeight);
+      
+      setCroppedImageUrl(canvas.toDataURL('image/jpeg', 0.9));
+      setIsCropping(false);
+      setShowCropPreview(true);
+    };
+    img.onerror = () => {
+      setError('画像の読み込みに失敗しました。');
+      setIsCropping(false);
+    };
+    img.src = targetUrl;
   };
 
   // 履歴プリセットを読み込んでプレビューをキックする関数
@@ -460,7 +513,16 @@ function App() {
                     </div>
                   )}
                 </div>
-                <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '12px' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '12px' }}>
+                  <button 
+                    className="btn primary" 
+                    style={{ width: 'auto', padding: '8px 16px', fontSize: '0.85rem', background: 'rgba(56, 189, 248, 0.15)', color: '#38bdf8' }} 
+                    onClick={handlePreviewCrop}
+                    disabled={!roi || isCropping}
+                  >
+                    {isCropping ? <Loader className="pulse" size={14} style={{ marginRight: '6px' }} /> : <Eye size={14} style={{ marginRight: '6px' }}/>}
+                    👀 切り抜き結果をプレビュー
+                  </button>
                   <button className="btn secondary" style={{ width: 'auto', padding: '8px 16px', fontSize: '0.85rem' }} onClick={() => { setRoi(null); setCurrentRect(null); }}>
                     <RefreshCw size={14} style={{ marginRight: '6px' }}/> 範囲をリセット
                   </button>
@@ -575,25 +637,35 @@ function App() {
                 <Trash size={14} /> 一括クリア
               </button>
             </h2>
-            <div className="history-grid">
-              {history.map((item) => (
-                <div key={item.id} className="history-card" onClick={() => handleLoadHistory(item)}>
-                  <div className="history-card-header">
-                    <span className="history-card-title">{item.title}</span>
-                    <button className="delete-btn" onClick={(e) => handleDeleteHistory(e, item.id)} title="履歴から削除">
-                      <Trash size={16} />
-                    </button>
+            <div className="history-grid bookshelf">
+              {history.map((item) => {
+                const ytId = getYouTubeId(item.url);
+                return (
+                <div key={item.id} className="history-card book" onClick={() => handleLoadHistory(item)}>
+                  <div className="history-card-cover">
+                    {ytId ? (
+                      <img src={`https://img.youtube.com/vi/${ytId}/mqdefault.jpg`} alt="Thumbnail" />
+                    ) : (
+                      <div className="history-placeholder"><FileText size={40} /></div>
+                    )}
                   </div>
-                  <div className="history-card-body">
-                    <p className="history-meta"><strong>開始/終了:</strong> {item.startTime || '00:00:00'} ~ {item.endTime || '最後まで'}</p>
-                    <p className="history-meta"><strong>レイアウト:</strong> {item.rowsPerPage} 段/頁</p>
-                    <p className="history-meta-url" title={item.url}>{item.url}</p>
-                  </div>
-                  <div className="history-card-footer">
-                    <span className="history-date">{item.timestamp}</span>
+                  <div className="history-card-content">
+                    <div className="history-card-header">
+                      <span className="history-card-title">{item.title}</span>
+                      <button className="delete-btn" onClick={(e) => handleDeleteHistory(e, item.id)} title="履歴から削除">
+                        <Trash size={16} />
+                      </button>
+                    </div>
+                    <div className="history-card-body">
+                      <p className="history-meta"><strong>開始/終了:</strong> {item.startTime || '00:00:00'} ~ {item.endTime || '最後まで'}</p>
+                      <p className="history-meta"><strong>レイアウト:</strong> {item.rowsPerPage} 段/頁</p>
+                    </div>
+                    <div className="history-card-footer">
+                      <span className="history-date">{item.timestamp}</span>
+                    </div>
                   </div>
                 </div>
-              ))}
+              )})}
             </div>
           </div>
         )}
@@ -630,6 +702,25 @@ function App() {
                 </div>
               </>
             )}
+          </div>
+        )}
+
+        {showCropPreview && (
+          <div className="crop-preview-overlay" onClick={() => setShowCropPreview(false)}>
+            <div className="crop-preview-modal" onClick={e => e.stopPropagation()}>
+              <h3 style={{ marginBottom: '8px' }}>👀 プレビュー（完成予想図）</h3>
+              <p style={{ fontSize: '0.85rem', color: 'var(--text-gray)', marginBottom: '16px' }}>
+                実際のPDFでは、この画像が指定された段数に自動配置されます。
+              </p>
+              {croppedImageUrl ? (
+                <img src={croppedImageUrl} alt="Cropped Preview" style={{ width: '100%', borderRadius: '8px', border: '1px solid var(--glass-border)' }} />
+              ) : (
+                <Loader className="pulse" style={{ margin: '40px auto', display: 'block' }} />
+              )}
+              <div style={{ marginTop: '20px', textAlign: 'center' }}>
+                <button className="btn" onClick={() => setShowCropPreview(false)}>閉じる</button>
+              </div>
+            </div>
           </div>
         )}
       </div>
