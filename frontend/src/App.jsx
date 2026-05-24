@@ -46,6 +46,13 @@ const formatTime = (input) => {
   return trimmed; // 変化なし、または解析不能な場合はそのまま返す
 };
 
+const getYouTubeId = (url) => {
+  if (!url) return null;
+  const regExp = /^.*(youtu.be\/|v\/|u\/\w\/|embed\/|watch\?v=|\&v=)([^#\&\?]*).*/;
+  const match = url.match(regExp);
+  return (match && match[2].length === 11) ? match[2] : null;
+};
+
 function App() {
   const [url, setUrl] = useState('');
   const [songTitle, setSongTitle] = useState('');
@@ -60,6 +67,7 @@ function App() {
   const [endTime, setEndTime] = useState('');
   const [rowsPerPage, setRowsPerPage] = useState(10);
   const [error, setError] = useState(null);
+  const [activeMode, setActiveMode] = useState('crop'); // 'video' or 'crop'
 
   // リサイズ・移動用ステート
   const [resizing, setResizing] = useState(false);
@@ -532,51 +540,104 @@ function App() {
                  }}
                />
             </div>
+            {/* モード切り替えタブ */}
+            <div className="mode-toggle-container" style={{ display: 'flex', gap: '12px', marginBottom: '16px' }}>
+              <button 
+                className={`btn secondary ${activeMode === 'video' ? 'active-neon' : ''}`}
+                style={{ flex: 1, height: '48px', padding: '0', fontSize: '0.95rem' }}
+                onClick={() => setActiveMode('video')}
+              >
+                🎥 動画を操作・再生
+              </button>
+              <button 
+                className={`btn secondary ${activeMode === 'crop' ? 'active-neon' : ''}`}
+                style={{ flex: 1, height: '48px', padding: '0', fontSize: '0.95rem' }}
+                onClick={() => setActiveMode('crop')}
+              >
+                📐 楽譜の範囲を囲む
+              </button>
+            </div>
+
             <div 
               className="preview-container"
-              onMouseDown={handleMouseDown}
-              onMouseMove={handleMouseMove}
-              onMouseUp={handleMouseUp}
               ref={previewRef}
+              style={{ position: 'relative', overflow: 'hidden' }}
             >
-              <img src={previewUrl} className="preview-img" alt="Video Preview" draggable={false} />
-              {currentRect && (
-                <div 
-                  className="selection-rect" 
-                  style={{ 
-                    left: currentRect.x, 
-                    top: currentRect.y, 
-                    width: currentRect.w, 
-                    height: currentRect.h 
-                  }} 
+              {/* YouTube動画埋め込み */}
+              {getYouTubeId(url) ? (
+                <iframe
+                  src={`https://www.youtube.com/embed/${getYouTubeId(url)}?enablejsapi=1&autoplay=1&mute=1`}
+                  title="YouTube Preview"
+                  frameBorder="0"
+                  allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                  allowFullScreen
+                  className="preview-iframe"
+                  style={{
+                    width: '100%',
+                    aspectRatio: '16/9',
+                    pointerEvents: activeMode === 'video' ? 'auto' : 'none',
+                    display: 'block'
+                  }}
                 />
+              ) : (
+                <img src={previewUrl} className="preview-img" alt="Video Preview" draggable={false} />
               )}
-              {roi && !currentRect && (
-                <div 
-                  className="selection-rect active" 
-                  style={{ 
-                    left: `${roi.x * 100}%`, 
-                    top: `${roi.y * 100}%`, 
-                    width: `${roi.width * 100}%`, 
-                    height: `${roi.height * 100}%`,
-                    pointerEvents: 'auto'
+
+              {/* 範囲選択用透明オーバーレイ（「範囲を囲む」モード時のみマウスイベントを処理） */}
+              {activeMode === 'crop' && (
+                <div
+                  className="roi-overlay"
+                  onMouseDown={handleMouseDown}
+                  onMouseMove={handleMouseMove}
+                  onMouseUp={handleMouseUp}
+                  style={{
+                    position: 'absolute',
+                    top: 0,
+                    left: 0,
+                    width: '100%',
+                    height: '100%',
+                    zIndex: 5
                   }}
                 >
-                  <div 
-                    className="drag-handle-center" 
-                    onMouseDown={(e) => handleResizeStart(e, 'move')}
-                  />
-                  <div className="resize-handle top-left" onMouseDown={(e) => handleResizeStart(e, 'top-left')} />
-                  <div className="resize-handle top-right" onMouseDown={(e) => handleResizeStart(e, 'top-right')} />
-                  <div className="resize-handle bottom-left" onMouseDown={(e) => handleResizeStart(e, 'bottom-left')} />
-                  <div className="resize-handle bottom-right" onMouseDown={(e) => handleResizeStart(e, 'bottom-right')} />
-                  <div className="resize-handle top" onMouseDown={(e) => handleResizeStart(e, 'top')} />
-                  <div className="resize-handle bottom" onMouseDown={(e) => handleResizeStart(e, 'bottom')} />
-                  <div className="resize-handle left" onMouseDown={(e) => handleResizeStart(e, 'left')} />
-                  <div className="resize-handle right" onMouseDown={(e) => handleResizeStart(e, 'right')} />
+                  {currentRect && (
+                    <div 
+                      className="selection-rect" 
+                      style={{ 
+                        left: currentRect.x, 
+                        top: currentRect.y, 
+                        width: currentRect.w, 
+                        height: currentRect.h 
+                      }} 
+                    />
+                  )}
+                  {roi && !currentRect && (
+                    <div 
+                      className="selection-rect active" 
+                      style={{ 
+                        left: `${roi.x * 100}%`, 
+                        top: `${roi.y * 100}%`, 
+                        width: `${roi.width * 100}%`, 
+                        height: `${roi.height * 100}%`,
+                        pointerEvents: 'auto'
+                      }}
+                    >
+                      <div 
+                        className="drag-handle-center" 
+                        onMouseDown={(e) => handleResizeStart(e, 'move')}
+                      />
+                      <div className="resize-handle top-left" onMouseDown={(e) => handleResizeStart(e, 'top-left')} />
+                      <div className="resize-handle top-right" onMouseDown={(e) => handleResizeStart(e, 'top-right')} />
+                      <div className="resize-handle bottom-left" onMouseDown={(e) => handleResizeStart(e, 'bottom-left')} />
+                      <div className="resize-handle bottom-right" onMouseDown={(e) => handleResizeStart(e, 'bottom-right')} />
+                      <div className="resize-handle top" onMouseDown={(e) => handleResizeStart(e, 'top')} />
+                      <div className="resize-handle bottom" onMouseDown={(e) => handleResizeStart(e, 'bottom')} />
+                      <div className="resize-handle left" onMouseDown={(e) => handleResizeStart(e, 'left')} />
+                      <div className="resize-handle right" onMouseDown={(e) => handleResizeStart(e, 'right')} />
+                    </div>
+                  )}
+                  {!roi && !currentRect && <div className="selection-hint">楽譜の範囲をマウスで囲んでください（リサイズ・微調整可能）</div>}
                 </div>
               )}
-              {!roi && !currentRect && <div className="selection-hint">楽譜の範囲をマウスで囲んでください（リサイズ・微調整可能）</div>}
             </div>
 
             <div className="roi-actions">
