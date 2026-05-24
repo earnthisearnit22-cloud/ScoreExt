@@ -4,6 +4,48 @@ import { Video, Download, FileText, Loader, CheckCircle, AlertCircle, Play, Crop
 
 const API_BASE = window.location.port === '5173' ? 'http://localhost:8000' : window.location.origin;
 
+const formatTime = (input) => {
+  if (!input) return '';
+  const trimmed = input.trim();
+  if (!trimmed) return '';
+  
+  // すでに HH:MM:SS 形式 (例: 00:00:00) になっているかチェック
+  if (/^\d{2}:\d{2}:\d{2}$/.test(trimmed)) {
+    return trimmed;
+  }
+  
+  // 数字のみの場合 (例: "5", "120")
+  if (/^\d+$/.test(trimmed)) {
+    const totalSeconds = parseInt(trimmed, 10);
+    const hrs = Math.floor(totalSeconds / 3600).toString().padStart(2, '0');
+    const mins = Math.floor((totalSeconds % 3600) / 60).toString().padStart(2, '0');
+    const secs = (totalSeconds % 60).toString().padStart(2, '0');
+    return `${hrs}:${mins}:${secs}`;
+  }
+  
+  // "MM:SS" 形式 (例: "1:30", "05:40")
+  if (/^\d{1,2}:\d{2}$/.test(trimmed)) {
+    const parts = trimmed.split(':');
+    const mins = parseInt(parts[0], 10);
+    const secs = parseInt(parts[1], 10);
+    const hrs = Math.floor(mins / 60).toString().padStart(2, '0');
+    const finalMins = (mins % 60).toString().padStart(2, '0');
+    const finalSecs = secs.toString().padStart(2, '0');
+    return `${hrs}:${finalMins}:${finalSecs}`;
+  }
+
+  // "HH:MM:SS" 形式で桁が足りない場合 (例: "1:02:03")
+  if (/^\d{1,2}:\d{2}:\d{2}$/.test(trimmed)) {
+    const parts = trimmed.split(':');
+    const hrs = parts[0].padStart(2, '0');
+    const mins = parts[1];
+    const secs = parts[2];
+    return `${hrs}:${mins}:${secs}`;
+  }
+  
+  return trimmed; // 変化なし、または解析不能な場合はそのまま返す
+};
+
 function App() {
   const [url, setUrl] = useState('');
   const [songTitle, setSongTitle] = useState('');
@@ -350,23 +392,25 @@ function App() {
             <div style={{ display: 'flex', gap: '16px', marginTop: '16px' }}>
               <div style={{ position: 'relative', flex: 1 }}>
                  <Clock style={{ position: 'absolute', left: '20px', top: '22px', color: 'var(--text-gray)' }} size={24} />
-                 <input 
-                   type="text" 
-                   placeholder="開始時間 (例 00:00:05)" 
-                   value={startTime}
-                   onChange={(e) => setStartTime(e.target.value)}
-                   style={{ paddingLeft: '56px' }}
-                 />
+                  <input 
+                    type="text" 
+                    placeholder="開始時間 (例 00:00:05)" 
+                    value={startTime}
+                    onChange={(e) => setStartTime(e.target.value)}
+                    onBlur={() => setStartTime(prev => formatTime(prev))}
+                    style={{ paddingLeft: '56px' }}
+                  />
               </div>
               <div style={{ position: 'relative', flex: 1 }}>
                  <Clock style={{ position: 'absolute', left: '20px', top: '22px', color: 'var(--text-gray)' }} size={24} />
-                 <input 
-                   type="text" 
-                   placeholder="終了時間 (空欄で最後まで)" 
-                   value={endTime}
-                   onChange={(e) => setEndTime(e.target.value)}
-                   style={{ paddingLeft: '56px' }}
-                 />
+                  <input 
+                    type="text" 
+                    placeholder="終了時間 (空欄で最後まで)" 
+                    value={endTime}
+                    onChange={(e) => setEndTime(e.target.value)}
+                    onBlur={() => setEndTime(prev => formatTime(prev))}
+                    style={{ paddingLeft: '56px' }}
+                  />
               </div>
               <div style={{ position: 'relative', width: '150px' }}>
                  <Layers style={{ position: 'absolute', left: '20px', top: '22px', color: 'var(--text-gray)' }} size={24} />
