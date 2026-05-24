@@ -48,7 +48,7 @@ const formatTime = (input) => {
 
 const getYouTubeId = (url) => {
   if (!url) return null;
-  const regExp = /^.*(youtu.be\/|v\/|u\/\w\/|embed\/|watch\?v=|\&v=)([^#\&\?]*).*/;
+  const regExp = /^.*(youtu.be\/|v\/|u\/\w\/|embed\/|watch\?v=|&v=)([^#&?]*).*/;
   const match = url.match(regExp);
   return (match && match[2].length === 11) ? match[2] : null;
 };
@@ -79,7 +79,7 @@ function App() {
   const [history, setHistory] = useState(() => {
     try {
       return JSON.parse(localStorage.getItem('scoreext_history')) || [];
-    } catch (_) {
+    } catch {
       return [];
     }
   });
@@ -102,8 +102,8 @@ function App() {
             clearInterval(interval);
             setLoading(false);
           }
-        } catch (err) {
-          console.error(err);
+        } catch {
+          console.error('Failed to get status');
           clearInterval(interval);
         }
       }, 2000);
@@ -171,32 +171,34 @@ function App() {
     };
   }, [resizing, resizeHandle, resizeStartPos, resizeStartRoi]);
 
-  // 変換成功時に自動で履歴へ追加する useEffect
+  // 変換成功時に自動で履歴へ追加する
   useEffect(() => {
     if (status?.status === 'completed' && taskId) {
-      setHistory(prev => {
-        // 重複判定
-        const exists = prev.some(item => item.url === url && JSON.stringify(item.roi) === JSON.stringify(roi));
-        if (exists) return prev;
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+      setTimeout(() => {
+        setHistory(prev => {
+          const exists = prev.some(item => item.url === url && JSON.stringify(item.roi) === JSON.stringify(roi));
+          if (exists) return prev;
 
-        const newHistory = [
-          {
-            id: taskId,
-            url,
-            title: songTitle || 'Untitled Score',
-            roi,
-            startTime,
-            endTime,
-            rowsPerPage,
-            timestamp: new Date().toLocaleString()
-          },
-          ...prev.slice(0, 4) // 最大5つまで保持
-        ];
-        localStorage.setItem('scoreext_history', JSON.stringify(newHistory));
-        return newHistory;
-      });
+          const newHistory = [
+            {
+              id: taskId,
+              url,
+              title: songTitle || 'Untitled Score',
+              roi,
+              startTime,
+              endTime,
+              rowsPerPage,
+              timestamp: new Date().toLocaleString()
+            },
+            ...prev.slice(0, 4) // 最大5つまで保持
+          ];
+          localStorage.setItem('scoreext_history', JSON.stringify(newHistory));
+          return newHistory;
+        });
+      }, 0);
     }
-  }, [status, taskId]);
+  }, [status?.status, taskId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // プレビュー取得（自動検出対応）
   const fetchPreview = async () => {
@@ -218,7 +220,7 @@ function App() {
         setRoi(detectedRoi);
       }
       setLoading(false);
-    } catch (err) {
+    } catch {
       setError('プレビューの取得に失敗しました。URLを確認してください。');
       setLoading(false);
     }
@@ -323,7 +325,7 @@ function App() {
       if (response.data.path) {
         setOutputPath(response.data.path);
       }
-    } catch (err) {
+    } catch {
       console.error('Folder selection cancelled or failed');
     } finally {
       setIsBrowsing(false);
@@ -346,7 +348,7 @@ function App() {
         rowsPerPage: rowsPerPage
       });
       setTaskId(response.data.task_id);
-    } catch (err) {
+    } catch {
       setError('変換の開始に失敗しました。');
       setLoading(false);
     }
@@ -371,104 +373,194 @@ function App() {
         <h1>ScoreExt <span>楽譜抽出アシスタント</span></h1>
         <p className="subtitle">動画の範囲を選択して、そこだけを楽譜として抽出します</p>
 
-        {!previewUrl && !taskId && (
-          <div className="input-group">
-            <div style={{ position: 'relative' }}>
-              <Video style={{ position: 'absolute', left: '20px', top: '22px', color: 'var(--text-gray)' }} size={24} />
-              <input 
-                type="text" 
-                placeholder="YouTube URLを貼り付けてプレビューを表示..." 
-                value={url}
-                onChange={(e) => setUrl(e.target.value)}
-                disabled={loading}
-                style={{ paddingLeft: '56px' }}
-              />
-            </div>
-            
-            <div style={{ position: 'relative', marginTop: '16px' }}>
-              <FileText style={{ position: 'absolute', left: '20px', top: '22px', color: 'var(--text-gray)' }} size={24} />
-              <input 
-                type="text" 
-                placeholder="曲名を手動入力（PDFのヘッダーに表示されます）" 
-                value={songTitle}
-                onChange={(e) => setSongTitle(e.target.value)}
-                disabled={loading}
-                style={{ paddingLeft: '56px' }}
-              />
-            </div>
-
-            <div style={{ display: 'flex', gap: '16px', marginTop: '16px' }}>
-              <div style={{ position: 'relative', flex: 1 }}>
-                 <Clock style={{ position: 'absolute', left: '20px', top: '22px', color: 'var(--text-gray)' }} size={24} />
-                  <input 
-                    type="text" 
-                    placeholder="開始時間 (例 00:00:05)" 
-                    value={startTime}
-                    onChange={(e) => setStartTime(e.target.value)}
-                    onBlur={() => setStartTime(prev => formatTime(prev))}
-                    style={{ paddingLeft: '56px' }}
-                  />
-              </div>
-              <div style={{ position: 'relative', flex: 1 }}>
-                 <Clock style={{ position: 'absolute', left: '20px', top: '22px', color: 'var(--text-gray)' }} size={24} />
-                  <input 
-                    type="text" 
-                    placeholder="終了時間 (空欄で最後まで)" 
-                    value={endTime}
-                    onChange={(e) => setEndTime(e.target.value)}
-                    onBlur={() => setEndTime(prev => formatTime(prev))}
-                    style={{ paddingLeft: '56px' }}
-                  />
-              </div>
-              <div style={{ position: 'relative', width: '150px' }}>
-                 <Layers style={{ position: 'absolute', left: '20px', top: '22px', color: 'var(--text-gray)' }} size={24} />
-                 <input 
-                   type="number" 
-                   value={rowsPerPage}
-                   onChange={(e) => setRowsPerPage(e.target.value)}
-                   style={{ paddingLeft: '56px' }}
-                   min="1"
-                   max="20"
-                 />
-                 <span style={{ position: 'absolute', right: '15px', top: '22px', color: 'var(--text-gray)', fontSize: '0.8rem' }}>段/頁</span>
-              </div>
-            </div>
-
-            <div style={{ position: 'relative', marginTop: '16px', display: 'flex', gap: '12px', alignItems: 'center' }}>
-              <div style={{ position: 'relative', flex: 1 }}>
-                <Folder style={{ position: 'absolute', left: '20px', top: '22px', color: 'var(--text-gray)' }} size={24} />
+        {!taskId && (!status || (status.status !== 'completed' && status.status !== 'error')) && (
+          <div className="main-form">
+            <div className="input-group" style={{ marginBottom: '16px' }}>
+              <div style={{ position: 'relative' }}>
+                <Video style={{ position: 'absolute', left: '20px', top: '22px', color: 'var(--text-gray)' }} size={24} />
                 <input 
                   type="text" 
-                  placeholder="保存先フォルダ（空欄でダウンロードのみ）" 
-                  value={outputPath}
-                  onChange={(e) => setOutputPath(e.target.value)}
-                  disabled={loading || isBrowsing}
+                  placeholder="YouTube URLを貼り付けてリアルタイムプレビュー..." 
+                  value={url}
+                  onChange={(e) => setUrl(e.target.value)}
+                  disabled={loading}
                   style={{ paddingLeft: '56px' }}
                 />
               </div>
-              <button 
-                className="btn secondary" 
-                style={{ width: 'auto', padding: '0 20px', height: '60px' }}
-                onClick={handleBrowseFolder}
-                disabled={loading || isBrowsing}
-              >
-                {isBrowsing ? <Loader className="pulse" size={20} /> : '参照...'}
+            </div>
+
+            {(getYouTubeId(url) || previewUrl) && (
+              <div className="roi-section" style={{ marginBottom: '24px', animation: 'fadeIn 0.5s ease' }}>
+                <div className="mode-toggle-container" style={{ display: 'flex', gap: '12px', marginBottom: '16px' }}>
+                  <button 
+                    className={`btn secondary ${activeMode === 'video' ? 'active-neon' : ''}`}
+                    style={{ flex: 1, height: '48px', padding: '0', fontSize: '0.95rem' }}
+                    onClick={() => setActiveMode('video')}
+                  >
+                    🎥 動画を操作・再生
+                  </button>
+                  <button 
+                    className={`btn secondary ${activeMode === 'crop' ? 'active-neon' : ''}`}
+                    style={{ flex: 1, height: '48px', padding: '0', fontSize: '0.95rem' }}
+                    onClick={() => setActiveMode('crop')}
+                  >
+                    📐 楽譜の範囲を囲む
+                  </button>
+                </div>
+
+                <div 
+                  className="preview-container"
+                  ref={previewRef}
+                  style={{ position: 'relative', overflow: 'hidden' }}
+                >
+                  {getYouTubeId(url) && !previewUrl ? (
+                    <iframe
+                      src={`https://www.youtube.com/embed/${getYouTubeId(url)}?enablejsapi=1&autoplay=1&mute=1&origin=${encodeURIComponent(window.location.origin)}`}
+                      title="YouTube Preview"
+                      frameBorder="0"
+                      allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                      allowFullScreen
+                      className="preview-iframe"
+                      style={{
+                        width: '100%',
+                        aspectRatio: '16/9',
+                        pointerEvents: activeMode === 'video' ? 'auto' : 'none',
+                        display: 'block'
+                      }}
+                    />
+                  ) : (
+                    <img src={previewUrl} className="preview-img" alt="Video Preview" draggable={false} />
+                  )}
+
+                  {activeMode === 'crop' && (
+                    <div
+                      className="roi-overlay"
+                      onMouseDown={handleMouseDown}
+                      onMouseMove={handleMouseMove}
+                      onMouseUp={handleMouseUp}
+                      style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', zIndex: 5 }}
+                    >
+                      {currentRect && (
+                        <div className="selection-rect" style={{ left: currentRect.x, top: currentRect.y, width: currentRect.w, height: currentRect.h }} />
+                      )}
+                      {roi && !currentRect && (
+                        <div className="selection-rect active" style={{ left: `${roi.x * 100}%`, top: `${roi.y * 100}%`, width: `${roi.width * 100}%`, height: `${roi.height * 100}%`, pointerEvents: 'auto' }}>
+                          <div className="drag-handle-center" onMouseDown={(e) => handleResizeStart(e, 'move')} />
+                          <div className="resize-handle top-left" onMouseDown={(e) => handleResizeStart(e, 'top-left')} />
+                          <div className="resize-handle top-right" onMouseDown={(e) => handleResizeStart(e, 'top-right')} />
+                          <div className="resize-handle bottom-left" onMouseDown={(e) => handleResizeStart(e, 'bottom-left')} />
+                          <div className="resize-handle bottom-right" onMouseDown={(e) => handleResizeStart(e, 'bottom-right')} />
+                          <div className="resize-handle top" onMouseDown={(e) => handleResizeStart(e, 'top')} />
+                          <div className="resize-handle bottom" onMouseDown={(e) => handleResizeStart(e, 'bottom')} />
+                          <div className="resize-handle left" onMouseDown={(e) => handleResizeStart(e, 'left')} />
+                          <div className="resize-handle right" onMouseDown={(e) => handleResizeStart(e, 'right')} />
+                        </div>
+                      )}
+                      {!roi && !currentRect && <div className="selection-hint">楽譜の範囲をマウスで囲んでください（リサイズ・微調整可能）</div>}
+                    </div>
+                  )}
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '12px' }}>
+                  <button className="btn secondary" style={{ width: 'auto', padding: '8px 16px', fontSize: '0.85rem' }} onClick={() => { setRoi(null); setCurrentRect(null); }}>
+                    <RefreshCw size={14} style={{ marginRight: '6px' }}/> 範囲をリセット
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {!previewUrl && url && (
+              <button className="btn secondary" style={{ marginBottom: '24px', background: getYouTubeId(url) ? 'rgba(244, 63, 94, 0.1)' : undefined }} onClick={fetchPreview} disabled={loading}>
+                {loading ? <Loader className="pulse" /> : <Play size={20} />} 
+                {getYouTubeId(url) ? '※動画が再生できない場合はこちら（画像プレビューを取得）' : '画像プレビューを取得'}
               </button>
+            )}
+
+            <div className="settings-group" style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+              <div style={{ position: 'relative' }}>
+                <FileText style={{ position: 'absolute', left: '20px', top: '22px', color: 'var(--text-gray)' }} size={24} />
+                <input 
+                  type="text" 
+                  placeholder="曲名を手動入力（PDFのヘッダーに表示されます）" 
+                  value={songTitle}
+                  onChange={(e) => setSongTitle(e.target.value)}
+                  disabled={loading}
+                  style={{ paddingLeft: '56px' }}
+                />
+              </div>
+
+              <div style={{ display: 'flex', gap: '16px' }}>
+                <div style={{ position: 'relative', flex: 1 }}>
+                   <Clock style={{ position: 'absolute', left: '20px', top: '22px', color: 'var(--text-gray)' }} size={24} />
+                    <input 
+                      type="text" 
+                      placeholder="開始時間 (例 00:00:05)" 
+                      value={startTime}
+                      onChange={(e) => setStartTime(e.target.value)}
+                      onBlur={() => setStartTime(prev => formatTime(prev))}
+                      style={{ paddingLeft: '56px' }}
+                    />
+                </div>
+                <div style={{ position: 'relative', flex: 1 }}>
+                   <Clock style={{ position: 'absolute', left: '20px', top: '22px', color: 'var(--text-gray)' }} size={24} />
+                    <input 
+                      type="text" 
+                      placeholder="終了時間 (空欄で最後まで)" 
+                      value={endTime}
+                      onChange={(e) => setEndTime(e.target.value)}
+                      onBlur={() => setEndTime(prev => formatTime(prev))}
+                      style={{ paddingLeft: '56px' }}
+                    />
+                </div>
+                <div style={{ position: 'relative', width: '150px' }}>
+                   <Layers style={{ position: 'absolute', left: '20px', top: '22px', color: 'var(--text-gray)' }} size={24} />
+                   <input 
+                     type="number" 
+                     value={rowsPerPage}
+                     onChange={(e) => setRowsPerPage(e.target.value)}
+                     style={{ paddingLeft: '56px' }}
+                     min="1"
+                     max="20"
+                   />
+                   <span style={{ position: 'absolute', right: '15px', top: '22px', color: 'var(--text-gray)', fontSize: '0.8rem' }}>段/頁</span>
+                </div>
+              </div>
+
+              <div style={{ position: 'relative', display: 'flex', gap: '12px', alignItems: 'center' }}>
+                <div style={{ position: 'relative', flex: 1 }}>
+                  <Folder style={{ position: 'absolute', left: '20px', top: '22px', color: 'var(--text-gray)' }} size={24} />
+                  <input 
+                    type="text" 
+                    placeholder="保存先フォルダ（空欄でダウンロードのみ）" 
+                    value={outputPath}
+                    onChange={(e) => setOutputPath(e.target.value)}
+                    disabled={loading || isBrowsing}
+                    style={{ paddingLeft: '56px' }}
+                  />
+                </div>
+                <button 
+                  className="btn secondary" 
+                  style={{ width: 'auto', padding: '0 20px', height: '60px' }}
+                  onClick={handleBrowseFolder}
+                  disabled={loading || isBrowsing}
+                >
+                  {isBrowsing ? <Loader className="pulse" size={20} /> : '参照...'}
+                </button>
+              </div>
             </div>
 
             <button 
               className="btn" 
-              style={{ marginTop: '24px' }} 
-              onClick={fetchPreview}
-              disabled={loading || !url}
+              style={{ marginTop: '32px' }} 
+              disabled={!roi || loading || (!getYouTubeId(url) && !previewUrl)} 
+              onClick={handleStartConvert}
             >
-              {loading ? <Loader className="pulse" /> : <Play size={20} />}
-              プレビューを表示
+              {loading ? <Loader className="pulse" /> : <Crop size={20} />}
+              この範囲と設定で楽譜を生成
             </button>
           </div>
         )}
 
-        {history.length > 0 && !previewUrl && !taskId && (
+        {history.length > 0 && !url && !taskId && (!status || (status.status !== 'completed' && status.status !== 'error')) && (
           <div className="history-section">
             <h2 className="history-title">
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
@@ -477,15 +569,7 @@ function App() {
               <button 
                 onClick={handleClearHistory}
                 className="delete-btn"
-                style={{ 
-                  fontSize: '0.85rem', 
-                  padding: '6px 12px', 
-                   display: 'flex', 
-                  alignItems: 'center', 
-                  gap: '4px',
-                  borderRadius: '8px',
-                  background: 'rgba(244, 63, 94, 0.1)'
-                }}
+                style={{ fontSize: '0.85rem', padding: '6px 12px', display: 'flex', alignItems: 'center', gap: '4px', borderRadius: '8px', background: 'rgba(244, 63, 94, 0.1)' }}
                 title="すべての履歴を削除"
               >
                 <Trash size={14} /> 一括クリア
@@ -493,18 +577,10 @@ function App() {
             </h2>
             <div className="history-grid">
               {history.map((item) => (
-                <div 
-                  key={item.id} 
-                  className="history-card" 
-                  onClick={() => handleLoadHistory(item)}
-                >
+                <div key={item.id} className="history-card" onClick={() => handleLoadHistory(item)}>
                   <div className="history-card-header">
                     <span className="history-card-title">{item.title}</span>
-                    <button 
-                      className="delete-btn" 
-                      onClick={(e) => handleDeleteHistory(e, item.id)}
-                      title="履歴から削除"
-                    >
+                    <button className="delete-btn" onClick={(e) => handleDeleteHistory(e, item.id)} title="履歴から削除">
                       <Trash size={16} />
                     </button>
                   </div>
@@ -522,136 +598,6 @@ function App() {
           </div>
         )}
 
-        {previewUrl && !taskId && (
-          <div className="roi-section">
-            <div style={{ marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '12px' }}>
-               <FileText size={20} color="var(--text-gray)" />
-               <input 
-                 type="text" 
-                 placeholder="曲名を入力..." 
-                 value={songTitle}
-                 onChange={(e) => setSongTitle(e.target.value)}
-                 style={{ 
-                   background: 'rgba(255,255,255,0.05)', 
-                   border: '1px solid var(--glass-border)',
-                   padding: '8px 12px',
-                   borderRadius: '8px',
-                   flex: 1
-                 }}
-               />
-            </div>
-            {/* モード切り替えタブ */}
-            <div className="mode-toggle-container" style={{ display: 'flex', gap: '12px', marginBottom: '16px' }}>
-              <button 
-                className={`btn secondary ${activeMode === 'video' ? 'active-neon' : ''}`}
-                style={{ flex: 1, height: '48px', padding: '0', fontSize: '0.95rem' }}
-                onClick={() => setActiveMode('video')}
-              >
-                🎥 動画を操作・再生
-              </button>
-              <button 
-                className={`btn secondary ${activeMode === 'crop' ? 'active-neon' : ''}`}
-                style={{ flex: 1, height: '48px', padding: '0', fontSize: '0.95rem' }}
-                onClick={() => setActiveMode('crop')}
-              >
-                📐 楽譜の範囲を囲む
-              </button>
-            </div>
-
-            <div 
-              className="preview-container"
-              ref={previewRef}
-              style={{ position: 'relative', overflow: 'hidden' }}
-            >
-              {/* YouTube動画埋め込み */}
-              {getYouTubeId(url) ? (
-                <iframe
-                  src={`https://www.youtube.com/embed/${getYouTubeId(url)}?enablejsapi=1&autoplay=1&mute=1`}
-                  title="YouTube Preview"
-                  frameBorder="0"
-                  allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-                  allowFullScreen
-                  className="preview-iframe"
-                  style={{
-                    width: '100%',
-                    aspectRatio: '16/9',
-                    pointerEvents: activeMode === 'video' ? 'auto' : 'none',
-                    display: 'block'
-                  }}
-                />
-              ) : (
-                <img src={previewUrl} className="preview-img" alt="Video Preview" draggable={false} />
-              )}
-
-              {/* 範囲選択用透明オーバーレイ（「範囲を囲む」モード時のみマウスイベントを処理） */}
-              {activeMode === 'crop' && (
-                <div
-                  className="roi-overlay"
-                  onMouseDown={handleMouseDown}
-                  onMouseMove={handleMouseMove}
-                  onMouseUp={handleMouseUp}
-                  style={{
-                    position: 'absolute',
-                    top: 0,
-                    left: 0,
-                    width: '100%',
-                    height: '100%',
-                    zIndex: 5
-                  }}
-                >
-                  {currentRect && (
-                    <div 
-                      className="selection-rect" 
-                      style={{ 
-                        left: currentRect.x, 
-                        top: currentRect.y, 
-                        width: currentRect.w, 
-                        height: currentRect.h 
-                      }} 
-                    />
-                  )}
-                  {roi && !currentRect && (
-                    <div 
-                      className="selection-rect active" 
-                      style={{ 
-                        left: `${roi.x * 100}%`, 
-                        top: `${roi.y * 100}%`, 
-                        width: `${roi.width * 100}%`, 
-                        height: `${roi.height * 100}%`,
-                        pointerEvents: 'auto'
-                      }}
-                    >
-                      <div 
-                        className="drag-handle-center" 
-                        onMouseDown={(e) => handleResizeStart(e, 'move')}
-                      />
-                      <div className="resize-handle top-left" onMouseDown={(e) => handleResizeStart(e, 'top-left')} />
-                      <div className="resize-handle top-right" onMouseDown={(e) => handleResizeStart(e, 'top-right')} />
-                      <div className="resize-handle bottom-left" onMouseDown={(e) => handleResizeStart(e, 'bottom-left')} />
-                      <div className="resize-handle bottom-right" onMouseDown={(e) => handleResizeStart(e, 'bottom-right')} />
-                      <div className="resize-handle top" onMouseDown={(e) => handleResizeStart(e, 'top')} />
-                      <div className="resize-handle bottom" onMouseDown={(e) => handleResizeStart(e, 'bottom')} />
-                      <div className="resize-handle left" onMouseDown={(e) => handleResizeStart(e, 'left')} />
-                      <div className="resize-handle right" onMouseDown={(e) => handleResizeStart(e, 'right')} />
-                    </div>
-                  )}
-                  {!roi && !currentRect && <div className="selection-hint">楽譜の範囲をマウスで囲んでください（リサイズ・微調整可能）</div>}
-                </div>
-              )}
-            </div>
-
-            <div className="roi-actions">
-              <button className="btn" onClick={() => { setPreviewUrl(null); setRoi(null); setCurrentRect(null); }}>
-                やり直す
-              </button>
-              <button className="btn" disabled={!roi || loading} onClick={handleStartConvert}>
-                <Crop size={20} />
-                この範囲で生成開始
-              </button>
-            </div>
-          </div>
-        )}
-
         {error && <div className="error-msg"><AlertCircle size={18} /> {error}</div>}
 
         {status && (
@@ -663,12 +609,16 @@ function App() {
                 <button className="btn" style={{ marginTop: '20px', background: '#22c55e' }} onClick={() => window.open(`${API_BASE}/download/${taskId}`)}>
                   <Download size={20} /> PDFをダウンロード
                 </button>
-                <button className="btn" style={{ marginTop: '12px', background: 'transparent', border: '1px solid var(--glass-border)' }} onClick={() => { setTaskId(null); setStatus(null); }}>
+                <button className="btn" style={{ marginTop: '12px', background: 'transparent', border: '1px solid var(--glass-border)' }} onClick={() => { setTaskId(null); setStatus(null); setRoi(null); }}>
                   別の範囲・動画で作成
                 </button>
               </div>
             ) : status.status === 'error' ? (
-              <div className="error-msg">{status.message}</div>
+              <div className="error-msg">{status.message}
+                <button className="btn secondary" style={{ marginTop: '16px' }} onClick={() => { setTaskId(null); setStatus(null); }}>
+                  戻る
+                </button>
+              </div>
             ) : (
               <>
                 <div className="status-text">
